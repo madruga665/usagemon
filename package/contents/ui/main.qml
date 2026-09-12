@@ -15,7 +15,10 @@ PlasmoidItem {
     id: root
 
     readonly property int formFactor: Plasmoid.formFactor
-    readonly property bool horizontal: formFactor === PlasmaCore.Types.Horizontal
+    readonly property bool vertical: formFactor === PlasmaCore.Types.Vertical
+                                     || Plasmoid.location === PlasmaCore.Types.LeftEdge
+                                     || Plasmoid.location === PlasmaCore.Types.RightEdge
+    readonly property bool horizontal: !vertical
 
     // Per-service data store. All three are populated in Both mode; only the
     // active one in single mode. The rest of the widget reads `usage`, which
@@ -237,6 +240,8 @@ PlasmoidItem {
             disconnectSource(sourceName)
 
             const stdout = (data["stdout"] || "").toString()
+            const stderr = (data["stderr"] || "").toString()
+            const exitCode = data["exit code"]
 
             // --- Model reads (best-effort) ---
 
@@ -325,8 +330,6 @@ PlasmoidItem {
             // (reached only when sourceName matches no known patterns —
             //  this is the catch-all for `claude -p /usage` output)
             root.busy = false
-            const exitCode = data["exit code"]
-            const stderr = (data["stderr"] || "").toString()
 
             if (exitCode !== 0 && stdout.trim().length === 0) {
                 if (!root.claudeUsage.ok) {
@@ -457,9 +460,6 @@ PlasmoidItem {
         // Both: fire everything in parallel and clear busy immediately so the
         // poll timer keeps running while subprocesses fly asynchronously.
         if (root.agentService === 2) {
-            root.claudeUsage = ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
-            root.clineUsage = ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
-            root.antigravityUsage = ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
             root.busy = true
             root.triedCliFallback = false
             if (sourceMode === 2)

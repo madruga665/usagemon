@@ -13,17 +13,12 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! command -v lsof >/dev/null 2>&1; then
-    printf '{"error":{"message":"lsof is required for the Antigravity source but was not found on PATH."}}\n'
-    exit 0
-fi
-
 dir="$(cd "$(dirname "$0")" && pwd)"
 helper="$dir/fetch_antigravity_usage.py"
 
 if [ ! -f "$helper" ]; then
-    printf '{"error":{"message":"Antigravity fetch helper script missing at %s."}}' "$helper"
+    printf '{"error":{"message":"Antigravity fetch helper script missing at %s."}}\n' "$helper"
     exit 0
 fi
 
-python3 "$helper" || printf '{"error":{"message":"Antigravity fetch helper crashed."}}\n'
+exec python3 "$helper"

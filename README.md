@@ -37,9 +37,9 @@ all three at once.
 
 ## Features
 
-- **Panel readout**: session and week usage side by side (e.g. `29% · 36%`),
-  each preceded by its own Breeze icon: a stopwatch for the session limit and
-  a week-calendar for the weekly limit.
+- **Panel readout**: session and week usage side by side (or stacked vertically
+  when placed in a vertical panel), each preceded by its own Breeze icon:
+  a stopwatch for the session limit and a week-calendar for the weekly limit.
 - **Severity colors**: the percentages and icons turn from green → yellow → red.
   When the OAuth API is used, this follows the API's own `severity` for each
   limit; otherwise it falls back to configurable warning/critical thresholds.

@@ -9,6 +9,7 @@ Item {
     id: compact
 
     readonly property bool horizontal: root.horizontal
+    readonly property bool vertical: root.vertical
     readonly property bool hasData: root.usage.ok && root.lastError.length === 0
 
     // Session percent + color for a single usage object, falling back to
@@ -49,19 +50,21 @@ Item {
     readonly property bool clineOk:  bothMode && hasGoodData(root.clineUsage)
     readonly property bool antigravityOk: bothMode && hasGoodData(root.antigravityUsage)
 
-    Layout.preferredWidth: {
-        if (!horizontal) return Kirigami.Units.iconSizes.medium
-        if (bothMode) return bothRow.implicitWidth + Kirigami.Units.smallSpacing * 3
-        return row.implicitWidth + Kirigami.Units.smallSpacing * 3
-    }
-    Layout.preferredHeight: horizontal ? Kirigami.Units.iconSizes.medium
-                                       : (bothMode ? bothRow.implicitHeight : row.implicitHeight) + Kirigami.Units.smallSpacing * 2
-    Layout.minimumWidth: Layout.preferredWidth
-    Layout.minimumHeight: Layout.preferredHeight
+    implicitWidth: horizontal ? ((bothMode ? bothRow.implicitWidth : row.implicitWidth) + Kirigami.Units.smallSpacing * 3)
+                              : ((bothMode ? verticalBothColumn.implicitWidth : verticalColumn.implicitWidth) + Kirigami.Units.smallSpacing * 2)
+    implicitHeight: horizontal ? Kirigami.Units.iconSizes.medium
+                               : ((bothMode ? verticalBothColumn.implicitHeight : verticalColumn.implicitHeight) + Kirigami.Units.largeSpacing * 3)
+
+    Layout.preferredWidth: implicitWidth
+    Layout.preferredHeight: implicitHeight
+    Layout.minimumWidth: horizontal ? implicitWidth : Kirigami.Units.iconSizes.small
+    Layout.minimumHeight: horizontal ? Kirigami.Units.iconSizes.small : implicitHeight
+    Layout.fillWidth: vertical
+    Layout.fillHeight: horizontal
 
     Rectangle {
         anchors.fill: parent
-        radius: height / 4
+        radius: Math.min(height, width) / 4
         color: Kirigami.ColorUtils.tintWithAlpha(root.usageColor, Kirigami.Theme.backgroundColor, 0.88)
         border.width: 1
         border.color: Kirigami.ColorUtils.linearInterpolation(root.usageColor, Kirigami.Theme.backgroundColor, 0.55)
@@ -83,10 +86,10 @@ Item {
         }
     }
 
-    // --- Both-mode: dual indicator -----------------------------------------------
+    // --- Both-mode: horizontal indicator -----------------------------------------
     RowLayout {
         id: bothRow
-        visible: bothMode
+        visible: bothMode && horizontal
         anchors.centerIn: parent
         spacing: Kirigami.Units.largeSpacing
 
@@ -120,10 +123,47 @@ Item {
         }
     }
 
+    // --- Both-mode: vertical indicator (3 stacked groups with icon over %) -------------
+    ColumnLayout {
+        id: verticalBothColumn
+        visible: bothMode && vertical
+        anchors.centerIn: parent
+        spacing: Kirigami.Units.largeSpacing
+
+        Repeater {
+            model: [
+                { icon: "anthropic.svg", pct: claudePct, ok: claudeOk, color: glanceColor(root.claudeUsage), active: root.activeTab === 0 },
+                { icon: "cline.svg", pct: clinePct,  ok: clineOk,  color: glanceColor(root.clineUsage),  active: root.activeTab === 1 },
+                { icon: "antigravity.svg", pct: antigravityPct, ok: antigravityOk, color: glanceColor(root.antigravityUsage), active: root.activeTab === 2 }
+            ]
+            delegate: ColumnLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 1
+
+                Image {
+                    visible: plasmoid.configuration.showPanelIcon
+                    Layout.alignment: Qt.AlignHCenter
+                    source: Qt.resolvedUrl("../icons/" + modelData.icon)
+                    sourceSize.width: Kirigami.Units.iconSizes.small
+                    sourceSize.height: Kirigami.Units.iconSizes.small
+                    opacity: modelData.active ? 1 : 0.45
+                }
+
+                PlasmaComponents3.Label {
+                    visible: modelData.ok
+                    Layout.alignment: Qt.AlignHCenter
+                    text: modelData.ok ? (modelData.pct >= 0 ? modelData.pct + "%" : "…") : "—"
+                    color: modelData.ok ? modelData.color : Kirigami.Theme.disabledTextColor
+                    font.bold: modelData.active
+                }
+            }
+        }
+    }
+
     // --- Single-mode: original session · week layout ------------------------------
     RowLayout {
         id: row
-        visible: !bothMode
+        visible: !bothMode && horizontal
         anchors.centerIn: parent
         spacing: Kirigami.Units.smallSpacing
 
@@ -192,4 +232,82 @@ Item {
             }
         }
     }
+
+    // --- Single-mode: vertical layout (vendor icon on top, session & week stacked) ---
+    ColumnLayout {
+        id: verticalColumn
+        visible: !bothMode && vertical
+        anchors.centerIn: parent
+        spacing: Kirigami.Units.largeSpacing
+
+        // Brand icon
+        Image {
+            visible: plasmoid.configuration.showPanelIcon
+            Layout.alignment: Qt.AlignHCenter
+            source: Qt.resolvedUrl("../icons/" + compact.singleModeIcon)
+            sourceSize.width: Kirigami.Units.iconSizes.smallMedium
+            sourceSize.height: Kirigami.Units.iconSizes.smallMedium
+        }
+
+        // Placeholder (loading / error) — only when we have no numbers.
+        ColumnLayout {
+            visible: !compact.hasData
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 1
+            Kirigami.Icon {
+                source: root.lastError.length > 0 ? "data-warning-symbolic" : "speedometer-symbolic"
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                color: root.usageColor
+            }
+            PlasmaComponents3.Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: root.lastError.length > 0 ? i18n("!") : i18n("…")
+                color: root.usageColor
+                font.bold: true
+            }
+        }
+
+        // Session segment (icon on top, percent below)
+        ColumnLayout {
+            visible: compact.hasData && !!root.usage.session
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 1
+            Kirigami.Icon {
+                source: "chronometer-symbolic"
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                color: compact.hasData && root.usage.session ? root.limitColor(root.usage.session.percent, root.usage.session.severity || "") : Kirigami.Theme.disabledTextColor
+            }
+            PlasmaComponents3.Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: (root.usage.session ? root.usage.session.percent : 0) + "%"
+                color: compact.hasData && root.usage.session ? root.limitColor(root.usage.session.percent, root.usage.session.severity || "") : Kirigami.Theme.disabledTextColor
+                font.bold: true
+            }
+        }
+
+        // Week segment (icon on top, percent below)
+        ColumnLayout {
+            visible: compact.hasData && !!root.usage.week
+            Layout.alignment: Qt.AlignHCenter
+            spacing: 1
+            Kirigami.Icon {
+                source: "view-calendar-week-symbolic"
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                color: compact.hasData && root.usage.week ? root.limitColor(root.usage.week.percent, root.usage.week.severity || "") : Kirigami.Theme.disabledTextColor
+            }
+            PlasmaComponents3.Label {
+                Layout.alignment: Qt.AlignHCenter
+                text: (root.usage.week ? root.usage.week.percent : 0) + "%"
+                color: compact.hasData && root.usage.week ? root.limitColor(root.usage.week.percent, root.usage.week.severity || "") : Kirigami.Theme.disabledTextColor
+                font.bold: true
+            }
+        }
+    }
+
 }
