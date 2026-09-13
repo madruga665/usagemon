@@ -93,10 +93,14 @@ function parseUsage(jsonText) {
             if (!b || typeof b.remainingFraction !== "number") continue;
             var resetsAt = b.resetTime ? Date.parse(b.resetTime) : 0;
             if (isNaN(resetsAt)) resetsAt = 0;
+            var pct = Math.round((1 - b.remainingFraction) * 100);
+            if (resetsAt > 0 && Date.now() > resetsAt) {
+                pct = 0;
+            }
             entries.push({
                 group: groupName,
                 window: (b.window || "").toString(),
-                percent: Math.round((1 - b.remainingFraction) * 100),
+                percent: pct,
                 resets: formatReset(b.resetTime),
                 resetsAt: resetsAt,
                 severity: ""

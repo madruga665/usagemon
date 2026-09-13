@@ -4,3 +4,5 @@
 
 # build artifacts
 *.plasmoid
+__pycache__/
+*.pyc

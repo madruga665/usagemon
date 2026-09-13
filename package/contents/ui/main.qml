@@ -54,7 +54,7 @@ PlasmoidItem {
 
     // Path to the bundled fetch script (reads the local OAuth token and calls
     // the usage API in a subprocess; the token never enters this QML).
-    readonly property string fetchScript: Qt.resolvedUrl("fetch-usage.sh").toString().replace(/^file:\/\//, "")
+    readonly property string fetchScript: decodeURIComponent(Qt.resolvedUrl("fetch-usage.sh").toString().replace(/^file:\/{1,3}/, "/"))
 
     // Path to the bundled Cline fetch script — derived from fetchScript (same
     // package directory, file:// prefix already stripped), just swapping the
@@ -289,6 +289,7 @@ PlasmoidItem {
                     return   // keep busy until the CLI result arrives
                 }
                 root.busy = false
+                busyWatchdog.stop()
                 if (!root.claudeUsage.ok) {
                     root.lastError = apiParsed.error || i18n("Usage unavailable")
                 }
@@ -299,6 +300,7 @@ PlasmoidItem {
             // Antigravity usage (agy CLI local server, no fallback).
             if (sourceName.indexOf("fetch-antigravity") !== -1) {
                 root.busy = false
+                busyWatchdog.stop()
                 const antigravityParsed = AntigravityApi.parseUsage(stdout)
                 if (antigravityParsed.ok) {
                     root.applyAntigravity(antigravityParsed, "api")
@@ -314,6 +316,7 @@ PlasmoidItem {
             // Cline usage API (no CLI fallback).
             if (sourceName.indexOf("fetch-cline") !== -1) {
                 root.busy = false
+                busyWatchdog.stop()
                 const clineParsed = ClineApi.parseUsage(stdout)
                 if (clineParsed.ok) {
                     root.applyCline(clineParsed, "api")
@@ -330,6 +333,7 @@ PlasmoidItem {
             // (reached only when sourceName matches no known patterns —
             //  this is the catch-all for `claude -p /usage` output)
             root.busy = false
+            busyWatchdog.stop()
 
             if (exitCode !== 0 && stdout.trim().length === 0) {
                 if (!root.claudeUsage.ok) {
@@ -367,6 +371,7 @@ PlasmoidItem {
     }
 
     function applyClaude(parsed, source) {
+        busyWatchdog.stop()
         root.claudeUsage = parsed
         root.busy = false
         root.lastError = ""
@@ -376,6 +381,7 @@ PlasmoidItem {
         root.checkNotifications()
     }
     function applyCline(parsed, source) {
+        busyWatchdog.stop()
         root.clineUsage = parsed
         root.busy = false
         root.lastError = ""
@@ -384,6 +390,7 @@ PlasmoidItem {
         root.checkNotifications()
     }
     function applyAntigravity(parsed, source) {
+        busyWatchdog.stop()
         root.antigravityUsage = parsed
         const group = (parsed.session && parsed.session.group) || (parsed.week && parsed.week.group) || ""
         root.antigravityModel = root.prettyAntigravityGroup(group)
@@ -457,6 +464,8 @@ PlasmoidItem {
     function refresh() {
         if (root.busy) return
 
+        busyWatchdog.restart()
+
         // Both: fire everything in parallel and clear busy immediately so the
         // poll timer keeps running while subprocesses fly asynchronously.
         if (root.agentService === 2) {
@@ -471,6 +480,7 @@ PlasmoidItem {
             executable.exec("bash -lc " + JSON.stringify("cat \"$HOME/.claude/settings.json\""))
             executable.exec("bash -lc " + JSON.stringify("cat \"$HOME/.cline/data/settings/providers.json\""))
             root.busy = false
+            busyWatchdog.stop()
             return
         }
 
@@ -491,6 +501,26 @@ PlasmoidItem {
             executable.exec("bash " + JSON.stringify(root.fetchScript))
         }
         executable.exec("bash -lc " + JSON.stringify("cat \"$HOME/.claude/settings.json\""))
+    }
+
+    // Safety watchdog: ensure root.busy can never get permanently stuck
+    // if a background process hangs or terminates unexpectedly.
+    Timer {
+        id: busyWatchdog
+        interval: 15000
+        repeat: false
+        onTriggered: {
+            if (root.busy) {
+                root.busy = false
+                if (!root.usage.ok && root.lastError.length === 0) {
+                    root.lastError = i18n("Fetch timed out")
+                }
+            }
+        }
+    }
+
+    Component.onCompleted: {
+        root.refresh()
     }
 
     // The usage endpoint is rate-limited (both the API and the CLI hit the same

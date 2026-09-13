@@ -221,20 +221,40 @@ def extract_tokens_from_proc():
 
 
 def listening_ports(pid):
+    ports = []
+    # Fast path: ss (typically ~10-30ms, no docker/overlay permission warnings)
+    try:
+        out = subprocess.run(
+            ["ss", "-tlnp", "-H"],
+            capture_output=True, text=True, timeout=1.0,
+        ).stdout
+        pid_needle = f"pid={pid},"
+        for line in out.splitlines():
+            if pid_needle in line:
+                m = re.search(r"(?:127\.0\.0\.1|localhost|\*|\[::1\]):(\d+)", line)
+                if m:
+                    p = int(m.group(1))
+                    if p not in ports:
+                        ports.append(p)
+        if ports:
+            return ports
+    except Exception:
+        pass
+
+    # Fallback: lsof
     try:
         out = subprocess.run(
             ["lsof", "-nP", "-iTCP", "-sTCP:LISTEN", "-a", "-p", str(pid)],
-            capture_output=True, text=True, timeout=3,
+            capture_output=True, text=True, timeout=1.5,
         ).stdout
+        for line in out.splitlines()[1:]:
+            m = re.search(r"(?:127\.0\.0\.1|localhost|\*|\[::1\]):(\d+)\s*\(LISTEN\)", line)
+            if m:
+                p = int(m.group(1))
+                if p not in ports:
+                    ports.append(p)
     except Exception:
-        return []
-    ports = []
-    for line in out.splitlines()[1:]:
-        m = re.search(r"(?:127\.0\.0\.1|localhost|\*|\[::1\]):(\d+)\s*\(LISTEN\)", line)
-        if m:
-            p = int(m.group(1))
-            if p not in ports:
-                ports.append(p)
+        pass
     return ports
 
 
@@ -299,7 +319,7 @@ def existing_pids():
 
 
 def try_existing():
-    # 1. Direct query using active cached session (very fast: ~50-80ms)
+    # 1. Direct query using active cached session (very fast: ~5-10ms)
     cache_tok, cache_addr = load_cached_session()
     if cache_tok and cache_addr:
         quota = query_endpoint(cache_addr, cache_tok)
@@ -321,7 +341,7 @@ def try_existing():
     if cache_tok:
         candidates.append((cache_tok, cache_addr))
 
-    # 4. Scan /proc
+    # 4. Scan /proc for live processes
     proc_candidates = extract_tokens_from_proc()
     for item in proc_candidates:
         if item not in candidates:
@@ -348,111 +368,6 @@ def try_existing():
                     return quota
 
     return None
-
-
-def extract_from_child_mem(pid):
-    maps_path = f"/proc/{pid}/maps"
-    mem_path = f"/proc/{pid}/mem"
-    if not os.path.isfile(maps_path) or not os.path.isfile(mem_path):
-        return None, None
-
-    token = None
-    addr = None
-    try:
-        with open(maps_path, "r", encoding="utf-8") as mf:
-            maps = mf.readlines()
-        with open(mem_path, "rb", 0) as mem:
-            for line in maps:
-                parts = line.split()
-                if len(parts) < 2 or "r" not in parts[1]:
-                    continue
-                start, end = [int(x, 16) for x in parts[0].split("-")]
-                size = end - start
-                if size <= 0 or size > 64 * 1024 * 1024:
-                    continue
-                try:
-                    mem.seek(start)
-                    chunk = mem.read(size)
-                    if not token:
-                        idx = chunk.find(b"ANTIGRAVITY_CSRF_TOKEN=")
-                        if idx != -1:
-                            cand = chunk[idx + 23 : idx + 23 + 36].decode("ascii", "ignore")
-                            if UUID_RE.match(cand):
-                                token = cand
-                    if not addr:
-                        idx = chunk.find(b"ANTIGRAVITY_LS_ADDRESS=")
-                        if idx != -1:
-                            cand = chunk[idx + 23 : idx + 23 + 30].split(b"\x00")[0].split(b"\n")[0].decode("ascii", "ignore").strip()
-                            if ":" in cand:
-                                addr = cand
-                    if token and addr:
-                        break
-                except Exception:
-                    continue
-    except Exception:
-        pass
-    return token, addr
-
-
-def launch_and_query(binary):
-    t_start = time.time()
-    pid, fd = pty.fork()
-    if pid == 0:
-        try:
-            os.execvp(binary, [binary])
-        except Exception:
-            os._exit(1)
-
-    quota = None
-    deadline = time.time() + STARTUP_TIMEOUT
-    try:
-        while time.time() < deadline:
-            # Check if statusline hook fired and created fresh statusline payload
-            if os.path.isfile(STATUSLINE_QUOTA_FILE):
-                if os.path.getmtime(STATUSLINE_QUOTA_FILE) >= t_start:
-                    quota = quota_from_statusline_payload()
-                    if quota is not None:
-                        break
-
-            # Check if session cache was written
-            tok, addr = load_cached_session()
-            if tok and addr:
-                quota = query_endpoint(addr, tok)
-                if quota is not None:
-                    break
-
-            token, addr = extract_from_child_mem(pid)
-            if addr:
-                quota = query_endpoint(addr, token)
-                if quota is not None:
-                    save_cached_session(token, addr)
-                    break
-
-            for port in listening_ports(pid):
-                quota = query_endpoint(port, token or tok)
-                if quota is not None:
-                    save_cached_session(token or tok, f"127.0.0.1:{port}")
-                    break
-            if quota is not None:
-                break
-            time.sleep(POLL_INTERVAL)
-    finally:
-        try:
-            os.kill(pid, signal.SIGTERM)
-            time.sleep(0.1)
-            os.kill(pid, signal.SIGKILL)
-        except (ProcessLookupError, Exception):
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        try:
-            os.waitpid(pid, os.WNOHANG)
-        except (ChildProcessError, OSError):
-            pass
-
-    return quota
 
 
 def quota_from_agy_hud_cache():
@@ -512,22 +427,19 @@ def quota_from_agy_hud_cache():
 
 
 def main():
+    # 1. Try to query a live running agy session or recent statusline hook update
     quota = try_existing()
 
+    # 2. If no live session is running (e.g. system boot or idle), use persistent caches
+    #    so the widget always loads immediately without hanging or spawning background CLI sessions
     if quota is None:
-        binary = find_binary()
-        if binary:
-            quota = launch_and_query(binary)
-
-    if quota is None:
-        # Fallback to statusline cache even if older
         quota = quota_from_statusline_payload()
 
     if quota is None:
         quota = quota_from_agy_hud_cache()
 
     if quota is None:
-        emit_error("Could not reach the agy local quota server.")
+        emit_error("Antigravity quota unavailable. Open agy to initialize.")
         return
 
     print(json.dumps(quota))
