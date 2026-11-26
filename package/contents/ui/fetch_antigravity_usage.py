@@ -60,6 +60,36 @@ def find_binary():
     return None
 
 
+def _statusline_group_and_window(bucket_id):
+    """Map a statusline quota bucket key to (group_display_name, window)."""
+    if bucket_id == "gemini-weekly":
+        return "Gemini Models", "weekly"
+    if bucket_id == "gemini-5h":
+        return "Gemini Models", "5h"
+    if bucket_id == "3p-weekly":
+        return "Claude and GPT models", "weekly"
+    if bucket_id == "3p-5h":
+        return "Claude and GPT models", "5h"
+
+    window = ""
+    stem = bucket_id
+    if bucket_id.endswith("-weekly"):
+        window = "weekly"
+        stem = bucket_id[:-7]
+    elif bucket_id.endswith("-5h"):
+        window = "5h"
+        stem = bucket_id[:-3]
+
+    if stem.startswith("gemini-argon"):
+        return "Gemini 4 Argon", window
+
+    # Generic fallback for any future per-model quota buckets:
+    # strip internal tokens like "-wtu" and title-case words.
+    words = [w for w in stem.split("-") if w and w.lower() != "wtu"]
+    display_name = " ".join(w.capitalize() for w in words) if words else bucket_id
+    return display_name, window
+
+
 def quota_from_statusline_payload(max_age_seconds=None):
     if not os.path.isfile(STATUSLINE_QUOTA_FILE):
         return None
@@ -75,53 +105,27 @@ def quota_from_statusline_payload(max_age_seconds=None):
         if not isinstance(q, dict):
             return None
 
-        groups = []
-        g_buckets = []
-        if "gemini-weekly" in q:
-            b = q["gemini-weekly"]
-            g_buckets.append({
-                "bucketId": "gemini-weekly",
-                "window": "weekly",
+        grouped = {}
+        for bucket_id, b in sorted(q.items()):
+            if not isinstance(b, dict):
+                continue
+            group_name, window = _statusline_group_and_window(bucket_id)
+            grouped.setdefault(group_name, []).append({
+                "bucketId": bucket_id,
+                "window": window,
                 "remainingFraction": b.get("remaining_fraction", 1.0),
                 "resetTime": b.get("reset_time", ""),
-            })
-        if "gemini-5h" in q:
-            b = q["gemini-5h"]
-            g_buckets.append({
-                "bucketId": "gemini-5h",
-                "window": "5h",
-                "remainingFraction": b.get("remaining_fraction", 1.0),
-                "resetTime": b.get("reset_time", ""),
-            })
-        if g_buckets:
-            groups.append({
-                "displayName": "Gemini Models",
-                "buckets": g_buckets
             })
 
-        p_buckets = []
-        if "3p-weekly" in q:
-            b = q["3p-weekly"]
-            p_buckets.append({
-                "bucketId": "3p-weekly",
-                "window": "weekly",
-                "remainingFraction": b.get("remaining_fraction", 1.0),
-                "resetTime": b.get("reset_time", ""),
-            })
-        if "3p-5h" in q:
-            b = q["3p-5h"]
-            p_buckets.append({
-                "bucketId": "3p-5h",
-                "window": "5h",
-                "remainingFraction": b.get("remaining_fraction", 1.0),
-                "resetTime": b.get("reset_time", ""),
-            })
-        if p_buckets:
-            groups.append({
-                "displayName": "Claude and GPT models",
-                "buckets": p_buckets
-            })
+        # Keep Gemini Models and Claude and GPT models first, then any extra model groups.
+        preferred_order = ["Gemini Models", "Claude and GPT models"]
+        ordered_names = [n for n in preferred_order if n in grouped]
+        ordered_names.extend(n for n in grouped if n not in preferred_order)
 
+        groups = [
+            {"displayName": name, "buckets": grouped[name]}
+            for name in ordered_names
+        ]
         if groups:
             return {"groups": groups}
     except Exception:
@@ -319,17 +323,18 @@ def existing_pids():
 
 
 def try_existing():
-    # 1. Direct query using active cached session (very fast: ~5-10ms)
+    # 1. Check fresh statusline payload (updated continuously by the active agy
+    #    session's statusline hook — tracks whichever session is currently active)
+    fresh_statusline = quota_from_statusline_payload(max_age_seconds=300)
+    if fresh_statusline is not None:
+        return fresh_statusline
+
+    # 2. Direct query using active cached session (very fast: ~5-10ms)
     cache_tok, cache_addr = load_cached_session()
     if cache_tok and cache_addr:
         quota = query_endpoint(cache_addr, cache_tok)
         if quota is not None:
             return quota
-
-    # 2. Check fresh statusline payload (updated continuously by agy statusline hook)
-    fresh_statusline = quota_from_statusline_payload(max_age_seconds=300)
-    if fresh_statusline is not None:
-        return fresh_statusline
 
     # 3. Check environment
     candidates = []

@@ -213,17 +213,25 @@ PlasmoidItem {
             return i18n("Fetching usage…")
         }
         let lines = []
-        if (usage.session) {
-            lines.push(i18n("Session: %1% (resets %2)", usage.session.percent, usage.session.resets))
-        }
-        if (usage.week) {
-            lines.push(i18n("Week: %1% (resets %2)", usage.week.percent, usage.week.resets))
-        }
-        usage.extraLimits.forEach(entry => {
-            lines.push(i18n("%1: %2% (resets %3)", entry.label, entry.percent, entry.resets))
-        })
-        if (root.activeModel.length > 0) {
-            lines.push(i18n("Model: %1", root.activeModel))
+        if (Array.isArray(usage.groups) && usage.groups.length > 0) {
+            usage.groups.forEach(g => {
+                (g.limits || []).forEach(entry => {
+                    lines.push(i18n("%1 — %2: %3% (resets %4)", g.name, entry.label, entry.percent, entry.resets))
+                })
+            })
+        } else {
+            if (usage.session) {
+                lines.push(i18n("Session: %1% (resets %2)", usage.session.percent, usage.session.resets))
+            }
+            if (usage.week) {
+                lines.push(i18n("Week: %1% (resets %2)", usage.week.percent, usage.week.resets))
+            }
+            usage.extraLimits.forEach(entry => {
+                lines.push(i18n("%1: %2% (resets %3)", entry.label, entry.percent, entry.resets))
+            })
+            if (root.activeModel.length > 0) {
+                lines.push(i18n("Model: %1", root.activeModel))
+            }
         }
         if (root.lastUpdated.length > 0) {
             lines.push(i18n("Updated %1", root.lastUpdated))

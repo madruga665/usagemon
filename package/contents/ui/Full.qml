@@ -28,6 +28,13 @@ ColumnLayout {
         return out
     }
 
+    // Grouped limits (used by Antigravity, where models/families have separate
+    // quota pools like Gemini Models, Claude and GPT models, Gemini 4 Argon).
+    readonly property var groups: {
+        if (!root.usage.ok || !Array.isArray(root.usage.groups) || root.usage.groups.length === 0) return []
+        return root.usage.groups
+    }
+
     RowLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
@@ -91,14 +98,14 @@ ColumnLayout {
                 }
 
                 Image {
-                    visible: parent.shownModel.length > 0 && plasmoid.configuration.showPopupIcon
+                    visible: parent.shownModel.length > 0 && full.groups.length === 0 && plasmoid.configuration.showPopupIcon
                     source: Qt.resolvedUrl("../icons/" + parent.modelIcon)
                     sourceSize.width: Kirigami.Units.iconSizes.small
                     sourceSize.height: Kirigami.Units.iconSizes.small
                 }
 
                 PlasmaComponents3.Label {
-                    visible: parent.shownModel.length > 0
+                    visible: parent.shownModel.length > 0 && full.groups.length === 0
                     text: i18n("Model: %1", parent.shownModel)
                     opacity: 0.7
                     font: Kirigami.Theme.smallFont
@@ -139,8 +146,49 @@ ColumnLayout {
         opacity: 0.7
     }
 
+    // Grouped view (Antigravity: separate sections per model/quota group)
     Repeater {
-        model: full.limits
+        model: full.groups
+
+        delegate: ColumnLayout {
+            required property var modelData
+            required property int index
+            Layout.fillWidth: true
+            Layout.topMargin: index > 0 ? Kirigami.Units.smallSpacing : 0
+            spacing: Kirigami.Units.smallSpacing / 2
+
+            PlasmaComponents3.Label {
+                text: modelData.name
+                font.bold: true
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                opacity: 0.75
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+
+            Repeater {
+                model: modelData.limits || []
+
+                delegate: UsageBar {
+                    required property var modelData
+                    required property int index
+                    Layout.fillWidth: true
+                    Layout.topMargin: index > 0 ? Kirigami.Units.smallSpacing / 2 : 0
+                    label: modelData.label
+                    percent: modelData.percent
+                    resets: modelData.resets
+                    resetsAt: modelData.resetsAt || 0
+                    nowMs: root.nowMs
+                    fullResets: full.wide
+                    accentColor: root.limitColor(modelData.percent, modelData.severity || "")
+                }
+            }
+        }
+    }
+
+    // Flat view (Claude Code, Cline)
+    Repeater {
+        model: full.groups.length === 0 ? full.limits : []
 
         delegate: UsageBar {
             required property var modelData

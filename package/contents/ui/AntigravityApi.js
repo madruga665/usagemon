@@ -48,6 +48,7 @@ function parseUsage(jsonText) {
         session: null,
         week: null,
         extraLimits: [],
+        groups: [],
         raw: jsonText || ""
     };
 
@@ -82,12 +83,26 @@ function parseUsage(jsonText) {
         return result;
     }
 
-    // Flatten every bucket, tagging it with its group's display name.
+    function windowOrder(win) {
+        if (win === "5h") return 0;
+        if (win === "weekly") return 1;
+        return 2;
+    }
+
+    function windowLabel(win, displayName) {
+        if (win === "5h") return "Session";
+        if (win === "weekly") return "Week";
+        return displayName || win || "Limit";
+    }
+
+    // Flatten every bucket (for compact summary / notifications) AND preserve
+    // per-group structure (for sectioned display in the popup).
     var entries = [];
     for (var i = 0; i < groups.length; i++) {
         var g = groups[i];
         if (!g || !Array.isArray(g.buckets)) continue;
         var groupName = g.displayName || "Antigravity";
+        var groupLimits = [];
         for (var j = 0; j < g.buckets.length; j++) {
             var b = g.buckets[j];
             if (!b || typeof b.remainingFraction !== "number") continue;
@@ -97,13 +112,34 @@ function parseUsage(jsonText) {
             if (resetsAt > 0 && Date.now() > resetsAt) {
                 pct = 0;
             }
-            entries.push({
+            var win = (b.window || "").toString();
+            var entry = {
                 group: groupName,
-                window: (b.window || "").toString(),
+                window: win,
+                label: windowLabel(win, b.displayName || ""),
                 percent: pct,
                 resets: formatReset(b.resetTime),
                 resetsAt: resetsAt,
                 severity: ""
+            };
+            entries.push(entry);
+            groupLimits.push(entry);
+        }
+        if (groupLimits.length > 0) {
+            groupLimits.sort(function (a, b) {
+                return windowOrder(a.window) - windowOrder(b.window);
+            });
+            result.groups.push({
+                name: groupName,
+                limits: groupLimits.map(function (e) {
+                    return {
+                        label: e.label,
+                        percent: e.percent,
+                        resets: e.resets,
+                        resetsAt: e.resetsAt,
+                        severity: e.severity
+                    };
+                })
             });
         }
     }
@@ -130,8 +166,10 @@ function parseUsage(jsonText) {
 
     entries.forEach(function (e) {
         if (e === sessionPick || e === weekPick) return;
+        var suffix = e.window === "5h" ? "session"
+                   : (e.window === "weekly" ? "week" : e.label.toLowerCase());
         result.extraLimits.push({
-            label: e.group + " " + (e.window === "5h" ? "session" : "week"),
+            label: e.group + " " + suffix,
             percent: e.percent,
             resets: e.resets,
             resetsAt: e.resetsAt,
