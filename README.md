@@ -3,14 +3,14 @@
 [![Available on the KDE Store](https://img.shields.io/badge/KDE%20Store-usagemon-blue)](https://store.kde.org/p/2365234/)
 
 A KDE Plasma 6 panel widget that shows your [Claude Code](https://claude.com/claude-code),
-[Cline](https://cline.bot), or [Antigravity](https://antigravity.google/) (`agy`) subscription
-usage (session and weekly rate limits) at a glance, so you don't have to type
-`/usage` in a terminal every time.
+[Cline](https://cline.bot), [Antigravity](https://antigravity.google/) (`agy`), or Codex
+subscription usage (session and weekly rate limits) at a glance, so you don't have
+to type `/usage` in a terminal every time.
 
 It reads your usage in the background and shows a compact, color-coded readout
 in your panel. Click it for a popup with the full breakdown and reset times.
 Pick which agent to monitor in the widget's settings, or pick **All** to watch
-all three at once.
+all four at once.
 
 <p align="center">
   <img src="images/usagemon_bar.png" alt="Panel readout" height="40">
@@ -52,8 +52,8 @@ all three at once.
 - **Active model**: reads your configured model from `~/.claude/settings.json`
   (or the active quota group for Antigravity) and shows it, with its brand
   icon, in the popup header and tooltip.
-- **All mode**: watch Claude Code, Cline, and Antigravity side by side. The
-  panel shows one indicator per service; click it to cycle through their
+- **All mode**: watch Claude Code, Cline, Antigravity, and Codex side by side.
+  The panel shows one indicator per service; click it to cycle through their
   details in the popup.
 - **Auto refresh** on a configurable interval, plus manual refresh
   (middle-click the panel item, the popup's refresh button, or the context menu).
@@ -61,11 +61,11 @@ all three at once.
 ## Requirements
 
 - KDE Plasma 6
-- [Claude Code](https://claude.com/claude-code), [Cline](https://cline.bot), and/or
-  [Antigravity](https://antigravity.google/)'s `agy` CLI installed and logged in.
-  usagemon reuses that existing login; you don't authenticate separately.
-  Choose which one(s) to monitor in the widget settings. Antigravity also needs
-  `lsof` on `PATH`.
+- [Claude Code](https://claude.com/claude-code), [Cline](https://cline.bot),
+  [Antigravity](https://antigravity.google/)'s `agy` CLI, and/or Codex installed
+  and logged in. usagemon reuses that existing login; you don't authenticate
+  separately. Choose which one(s) to monitor in the widget settings.
+  Antigravity also needs `lsof` on `PATH`.
 
 ## Install
 
@@ -96,8 +96,8 @@ Right-click the widget → **Configure usagemon…** → **General**:
 
 | Option | Default | Description |
 | --- | --- | --- |
-| Agent / Service | `Claude Code` | Which agent's usage to monitor: `Claude Code`, `Cline`, `Antigravity`, or `All` (all three side by side) |
-| Data source | Automatic | `Automatic` (OAuth API, then CLI), `OAuth API only`, or `CLI only` *(Claude Code only; Cline and Antigravity are API-only)* |
+| Agent / Service | `Claude Code` | Which agent's usage to monitor: `Claude Code`, `Cline`, `Antigravity`, `Codex`, or `All` (all four side by side) |
+| Data source | Automatic | `Automatic` (OAuth API, then CLI), `OAuth API only`, or `CLI only` *(Claude Code only; Cline, Antigravity and Codex are API-only)* |
 | Claude command | `claude` | Path/name of the `claude` binary (used by the CLI source) |
 | Poll interval (seconds) | `120` | How often to refresh (min 60; the source is rate-limited) |
 | Warn threshold (%) | `75` | Usage at which the readout turns yellow (when no API severity) |
@@ -183,6 +183,32 @@ used bucket of each window becomes the session/week reading (with a matching
 Gemini/Antigravity icon next to "Model:"); the other group's numbers still
 show up as extra rows in the popup, so nothing is hidden, just deprioritized
 in the compact view.
+
+### Codex support
+
+When **Agent / Service** is set to **Codex**, the widget reads the same quota
+data the Codex CLI and app show:
+
+1. **ChatGPT usage endpoint (API-only).** A bundled script
+   ([`fetch-codex-usage.sh`](package/contents/ui/fetch-codex-usage.sh) +
+   [`fetch_codex_usage.py`](package/contents/ui/fetch_codex_usage.py)) reads the
+   OAuth access token and account id from `~/.codex/auth.json` (the file
+   `codex login` writes) and calls
+   `GET https://chatgpt.com/backend-api/wham/usage`. The response is parsed in
+   [`CodexApi.js`](package/contents/ui/CodexApi.js) into the same shape the rest
+   of the widget uses. Windows are identified by their `limit_window_seconds`
+   (short window → session, 7-day or longer → week/secondary), not by their
+   field name, because plans expose them differently. Per-model
+   `additional_rate_limits` and `code_review_rate_limit` show up as extra rows
+   in the popup.
+2. **No CLI fallback.** Codex has no `/usage` text command, so when the endpoint
+   is unavailable (expired token, offline) the widget shows the last known
+   values and retries. Run `codex login` again if the token has expired.
+
+**Privacy:** the token is read locally, never stored or printed by usagemon, and
+is sent only to `chatgpt.com` in the Authorization header of that one request.
+No third-party servers are involved. This is an internal ChatGPT endpoint, not
+a public OpenAI API, so it may change without notice.
 
 ### Privacy (Claude Code)
 

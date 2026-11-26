@@ -14,7 +14,7 @@ Kirigami.FormLayout {
     property alias cfg_showPanelIcon: showPanelIconCheck.checked
     property alias cfg_showPopupIcon: showPopupIconCheck.checked
     property alias cfg_dataSourceMode: sourceCombo.currentIndex
-    // agentService's stored int (0=Claude, 1=Cline, 2=All, 3=Antigravity) is
+    // agentService's stored int (0=Claude, 1=Cline, 2=All, 3=Antigravity, 4=Codex) is
     // fixed by the rest of the widget; valueRole lets the dropdown show a
     // different order (All last) without renumbering that meaning.
     property alias cfg_agentService: serviceCombo.currentValue
@@ -30,6 +30,7 @@ Kirigami.FormLayout {
             { text: i18n("Claude Code"), value: 0 },
             { text: i18n("Cline"), value: 1 },
             { text: i18n("Antigravity"), value: 3 },
+            { text: i18n("Codex"), value: 4 },
             { text: i18n("All"), value: 2 }
         ]
     }
@@ -72,7 +73,7 @@ Kirigami.FormLayout {
         wrapMode: Text.WordWrap
         opacity: 0.7
         font: Kirigami.Theme.smallFont
-        text: i18n("All: parallel Claude Code + Cline + Antigravity display. Claude uses the OAuth API (or CLI if configured), Cline and Antigravity use their own sources. Click the panel to cycle between details in the popup.")
+        text: i18n("All: parallel Claude Code + Cline + Antigravity + Codex display. Claude uses the OAuth API (or CLI if configured), the others use their own sources. Click the panel to cycle between details in the popup.")
     }
 
     QQC2.Label {
@@ -83,6 +84,16 @@ Kirigami.FormLayout {
         opacity: 0.7
         font: Kirigami.Theme.smallFont
         text: i18n("Antigravity reads quota from the local agy CLI's loopback server — it reuses an already-running agy session if found, otherwise launches one briefly just to read quota. No Google account credentials are touched. Requires agy and lsof on PATH.")
+    }
+
+    QQC2.Label {
+        Kirigami.FormData.label: ""
+        visible: serviceCombo.currentValue === 4
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 18
+        wrapMode: Text.WordWrap
+        opacity: 0.7
+        font: Kirigami.Theme.smallFont
+        text: i18n("Codex reuses your existing local Codex login — the access token is read from ~/.codex/auth.json and sent only to chatgpt.com, never stored. Codex has no CLI fallback, so this source is API-only.")
     }
 
     QQC2.TextField {

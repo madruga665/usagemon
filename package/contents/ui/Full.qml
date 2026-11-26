@@ -47,10 +47,11 @@ ColumnLayout {
                 level: 5
                 text: {
                     if (root.agentService === 2) {
-                        const names = [i18n("Claude"), i18n("Cline"), i18n("Antigravity")]
+                        const names = [i18n("Claude"), i18n("Cline"), i18n("Antigravity"), i18n("Codex")]
                         return i18n("usagemon — %1", names[root.activeTab])
                     }
                     if (root.agentService === 3) return i18n("usagemon — Antigravity")
+                    if (root.agentService === 4) return i18n("usagemon — Codex")
                     return root.agentService === 1 ? i18n("usagemon — Cline") : i18n("usagemon")
                 }
                 Layout.fillWidth: true
@@ -62,7 +63,7 @@ ColumnLayout {
                 visible: root.agentService === 2
                 spacing: Kirigami.Units.smallSpacing
                 Repeater {
-                    model: [i18n("Claude"), i18n("Cline"), i18n("Antigravity")]
+                    model: [i18n("Claude"), i18n("Cline"), i18n("Antigravity"), i18n("Codex")]
                     delegate: PlasmaComponents3.Label {
                         text: modelData
                         font.bold: root.activeTab === index
@@ -84,7 +85,8 @@ ColumnLayout {
 
                 readonly property string bothModel: root.activeTab === 0 ? root.claudeModel
                                                    : root.activeTab === 1 ? root.clineModel
-                                                   : root.antigravityModel
+                                                   : root.activeTab === 2 ? root.antigravityModel
+                                                   : root.codexModel
                 readonly property string shownModel: root.agentService === 2 ? bothModel : root.activeModel
                 // Brand icon for the model family behind the current reading:
                 // Claude for Claude Code/Cline (Cline mostly proxies Claude
@@ -93,6 +95,8 @@ ColumnLayout {
                 readonly property string modelIcon: {
                     const antigravityTab = root.agentService === 3 || (root.agentService === 2 && root.activeTab === 2)
                     if (antigravityTab) return shownModel.indexOf("Gemini") !== -1 ? "gemini.svg" : "antigravity.svg"
+                    const codexTab = root.agentService === 4 || (root.agentService === 2 && root.activeTab === 3)
+                    if (codexTab) return "codex.svg"
                     const clineTab = root.agentService === 1 || (root.agentService === 2 && root.activeTab === 1)
                     return clineTab ? "cline.svg" : "claude.svg"
                 }

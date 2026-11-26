@@ -6,7 +6,7 @@
                 "Name": "Script-hpp"
             }
         ],
-        "Description": "Shows Claude Code, Cline, and/or Antigravity subscription usage (session/week limits) in your panel",
+        "Description": "Shows Claude Code, Cline, Antigravity, and/or Codex subscription usage (session/week limits) in your panel",
         "BugReportUrl": "https://github.com/Script-hpp/usagemon/issues",
         "Website": "https://github.com/Script-hpp/usagemon",
         "Icon": "utilities-system-monitor",

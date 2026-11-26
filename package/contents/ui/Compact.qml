@@ -33,11 +33,12 @@ Item {
         return u && u.ok && (!!u.session || !!u.week || (u.extraLimits && u.extraLimits.length > 0))
     }
 
-    // Brand icon for the single active service (Both mode shows all three
+    // Brand icon for the single active service (All mode shows all four
     // separately instead), so the panel reads at a glance without a label.
     readonly property string singleModeIcon: {
         if (root.agentService === 1) return "cline.svg"
         if (root.agentService === 3) return "antigravity.svg"
+        if (root.agentService === 4) return "codex.svg"
         return "anthropic.svg"
     }
 
@@ -46,9 +47,11 @@ Item {
     readonly property int  claudePct: bothMode ? glancePct(root.claudeUsage) : -1
     readonly property int  clinePct:  bothMode ? glancePct(root.clineUsage) : -1
     readonly property int  antigravityPct: bothMode ? glancePct(root.antigravityUsage) : -1
+    readonly property int  codexPct: bothMode ? glancePct(root.codexUsage) : -1
     readonly property bool claudeOk: bothMode && hasGoodData(root.claudeUsage)
     readonly property bool clineOk:  bothMode && hasGoodData(root.clineUsage)
     readonly property bool antigravityOk: bothMode && hasGoodData(root.antigravityUsage)
+    readonly property bool codexOk: bothMode && hasGoodData(root.codexUsage)
 
     implicitWidth: horizontal ? ((bothMode ? bothRow.implicitWidth : row.implicitWidth) + Kirigami.Units.smallSpacing * 3)
                               : ((bothMode ? verticalBothColumn.implicitWidth : verticalColumn.implicitWidth) + Kirigami.Units.smallSpacing * 2)
@@ -78,7 +81,7 @@ Item {
             if (mouse.button === Qt.MiddleButton) {
                 root.refresh()
             } else if (bothMode) {
-                root.activeTab = (root.activeTab + 1) % 3
+                root.activeTab = (root.activeTab + 1) % 4
                 if (!root.expanded) root.expanded = true
             } else {
                 root.expanded = !root.expanded
@@ -97,7 +100,8 @@ Item {
             model: [
                 { icon: "anthropic.svg", pct: claudePct, ok: claudeOk, color: glanceColor(root.claudeUsage), active: root.activeTab === 0 },
                 { icon: "cline.svg", pct: clinePct,  ok: clineOk,  color: glanceColor(root.clineUsage),  active: root.activeTab === 1 },
-                { icon: "antigravity.svg", pct: antigravityPct, ok: antigravityOk, color: glanceColor(root.antigravityUsage), active: root.activeTab === 2 }
+                { icon: "antigravity.svg", pct: antigravityPct, ok: antigravityOk, color: glanceColor(root.antigravityUsage), active: root.activeTab === 2 },
+                { icon: "codex.svg", pct: codexPct, ok: codexOk, color: glanceColor(root.codexUsage), active: root.activeTab === 3 }
             ]
             delegate: RowLayout {
                 spacing: Kirigami.Units.smallSpacing / 2
@@ -123,7 +127,7 @@ Item {
         }
     }
 
-    // --- Both-mode: vertical indicator (3 stacked groups with icon over %) -------------
+    // --- Both-mode: vertical indicator (4 stacked groups with icon over %) -------------
     ColumnLayout {
         id: verticalBothColumn
         visible: bothMode && vertical
@@ -134,7 +138,8 @@ Item {
             model: [
                 { icon: "anthropic.svg", pct: claudePct, ok: claudeOk, color: glanceColor(root.claudeUsage), active: root.activeTab === 0 },
                 { icon: "cline.svg", pct: clinePct,  ok: clineOk,  color: glanceColor(root.clineUsage),  active: root.activeTab === 1 },
-                { icon: "antigravity.svg", pct: antigravityPct, ok: antigravityOk, color: glanceColor(root.antigravityUsage), active: root.activeTab === 2 }
+                { icon: "antigravity.svg", pct: antigravityPct, ok: antigravityOk, color: glanceColor(root.antigravityUsage), active: root.activeTab === 2 },
+                { icon: "codex.svg", pct: codexPct, ok: codexOk, color: glanceColor(root.codexUsage), active: root.activeTab === 3 }
             ]
             delegate: ColumnLayout {
                 Layout.alignment: Qt.AlignHCenter

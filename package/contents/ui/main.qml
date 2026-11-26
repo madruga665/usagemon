@@ -10,6 +10,7 @@ import "UsageParser.js" as UsageParser
 import "UsageApi.js" as UsageApi
 import "ClineApi.js" as ClineApi
 import "AntigravityApi.js" as AntigravityApi
+import "CodexApi.js" as CodexApi
 
 PlasmoidItem {
     id: root
@@ -20,28 +21,34 @@ PlasmoidItem {
                                      || Plasmoid.location === PlasmaCore.Types.RightEdge
     readonly property bool horizontal: !vertical
 
-    // Per-service data store. All three are populated in Both mode; only the
+    // Per-service data store. All four are populated in All mode; only the
     // active one in single mode. The rest of the widget reads `usage`, which
     // always resolves to the currently active tab.
     property var claudeUsage: ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
     property var clineUsage: ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
     property var antigravityUsage: ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
+    property var codexUsage: ({ ok: false, error: null, session: null, week: null, extraLimits: [] })
     property string claudeModel: ""
     property string clineModel: ""
     property string antigravityModel: ""
-    // Which service the popup shows (0 = Claude, 1 = Cline).  In Both mode,
+    property string codexModel: ""
+    // Which service the popup shows (0 = Claude, 1 = Cline).  In All mode,
     // clicking the panel icon cycles tabs; in single mode it is fixed.
-    property int activeTab: root.agentService === 1 ? 1 : 0
+    property int activeTab: root.agentService === 1 ? 1
+                            : root.agentService === 3 ? 2
+                            : root.agentService === 4 ? 3 : 0
 
     // Convenience binding — every function/callback reads this, so they
-    // automatically follow the active tab. Tab order in Both mode is
-    // [Claude, Cline, Antigravity]; single-mode Antigravity ignores the tab.
+    // automatically follow the active tab. Tab order in All mode is
+    // [Claude, Cline, Antigravity, Codex]; single modes ignore the tab.
     function usageForTab(tab) {
         if (tab === 1) return root.clineUsage
         if (tab === 2) return root.antigravityUsage
+        if (tab === 3) return root.codexUsage
         return root.claudeUsage
     }
     readonly property var usage: root.agentService === 3 ? antigravityUsage
+                                 : root.agentService === 4 ? codexUsage
                                  : usageForTab(activeTab)
     property bool busy: false
     property string lastError: ""
@@ -65,7 +72,9 @@ PlasmoidItem {
     // agy CLI's loopback HTTPS port, never to Google account credentials).
     readonly property string fetchAntigravityScript: root.fetchScript.replace("fetch-usage.sh", "fetch-antigravity-usage.sh")
 
-    // 0 = Claude Code, 1 = Cline, 2 = All (Claude + Cline + Antigravity), 3 = Antigravity
+    readonly property string fetchCodexScript: root.fetchScript.replace("fetch-usage.sh", "fetch-codex-usage.sh")
+
+    // 0 = Claude Code, 1 = Cline, 2 = All, 3 = Antigravity, 4 = Codex
     readonly property int agentService: plasmoid.configuration.agentService
 
     // Drop any stale numbers from the previous source so the panel never shows
@@ -75,11 +84,15 @@ PlasmoidItem {
         root.claudeUsage = empty
         root.clineUsage = empty
         root.antigravityUsage = empty
+        root.codexUsage = empty
         root.claudeModel = ""
         root.clineModel = ""
         root.antigravityModel = ""
+        root.codexModel = ""
         root.activeModel = ""
-        root.activeTab = root.agentService === 1 ? 1 : 0
+        root.activeTab = root.agentService === 1 ? 1
+                         : root.agentService === 3 ? 2
+                         : root.agentService === 4 ? 3 : 0
         root.lastError = ""
         root.lastUpdated = ""
         root.notifiedOver = false
@@ -174,8 +187,9 @@ PlasmoidItem {
 
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
     toolTipMainText: {
-        if (root.agentService === 2) return i18n("usagemon — Claude + Cline + Antigravity")
+        if (root.agentService === 2) return i18n("usagemon — Claude + Cline + Antigravity + Codex")
         if (root.agentService === 3) return i18n("usagemon — Antigravity Usage")
+        if (root.agentService === 4) return i18n("usagemon — Codex Usage")
         return root.agentService === 1 ? i18n("usagemon — Cline Usage")
                                        : i18n("usagemon — Claude Code Usage")
     }
@@ -203,6 +217,7 @@ PlasmoidItem {
             let lines = svcLines(root.claudeUsage, i18n("Claude"))
             lines = lines.concat(svcLines(root.clineUsage, i18n("Cline")))
             lines = lines.concat(svcLines(root.antigravityUsage, i18n("Antigravity")))
+            lines = lines.concat(svcLines(root.codexUsage, i18n("Codex")))
             if (root.lastUpdated.length > 0) lines.push(i18n("Updated %1", root.lastUpdated))
             return lines.join("\n")
         }
@@ -337,6 +352,21 @@ PlasmoidItem {
                 return
             }
 
+            if (sourceName.indexOf("fetch-codex") !== -1) {
+                root.busy = false
+                busyWatchdog.stop()
+                const codexParsed = CodexApi.parseUsage(stdout)
+                if (codexParsed.ok) {
+                    root.applyCodex(codexParsed, "api")
+                    return
+                }
+                if (!root.codexUsage.ok) {
+                    root.lastError = codexParsed.error || i18n("Usage unavailable")
+                }
+                scheduleRetry()
+                return
+            }
+
             // --- Claude CLI fallback ---
             // (reached only when sourceName matches no known patterns —
             //  this is the catch-all for `claude -p /usage` output)
@@ -409,6 +439,15 @@ PlasmoidItem {
         root.lastUpdated = Qt.formatDateTime(new Date(), "hh:mm")
         root.checkNotifications()
     }
+    function applyCodex(parsed, source) {
+        busyWatchdog.stop()
+        root.codexUsage = parsed
+        root.busy = false
+        root.lastError = ""
+        root.dataSource = source
+        root.lastUpdated = Qt.formatDateTime(new Date(), "hh:mm")
+        root.checkNotifications()
+    }
     function applyUsage(parsed, source) {
         if (root.activeTab === 0) root.claudeUsage = parsed
         else root.clineUsage = parsed
@@ -432,6 +471,7 @@ PlasmoidItem {
             collect(root.claudeUsage)
             collect(root.clineUsage)
             collect(root.antigravityUsage)
+            collect(root.codexUsage)
         } else {
             collect(root.usage)
         }
@@ -455,6 +495,7 @@ PlasmoidItem {
         title: {
             if (root.agentService === 2) return i18n("Usage high")
             if (root.agentService === 3) return i18n("Antigravity usage high")
+            if (root.agentService === 4) return i18n("Codex usage high")
             return root.agentService === 1 ? i18n("Cline usage high")
                                            : i18n("Claude usage high")
         }
@@ -485,6 +526,7 @@ PlasmoidItem {
                 executable.exec("bash " + JSON.stringify(root.fetchScript))
             executable.exec("bash " + JSON.stringify(root.fetchClineScript))
             executable.exec("bash " + JSON.stringify(root.fetchAntigravityScript))
+            executable.exec("bash " + JSON.stringify(root.fetchCodexScript))
             executable.exec("bash -lc " + JSON.stringify("cat \"$HOME/.claude/settings.json\""))
             executable.exec("bash -lc " + JSON.stringify("cat \"$HOME/.cline/data/settings/providers.json\""))
             root.busy = false
@@ -501,6 +543,10 @@ PlasmoidItem {
         }
         if (root.agentService === 3) {
             executable.exec("bash " + JSON.stringify(root.fetchAntigravityScript))
+            return
+        }
+        if (root.agentService === 4) {
+            executable.exec("bash " + JSON.stringify(root.fetchCodexScript))
             return
         }
         if (sourceMode === 2) {
