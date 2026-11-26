@@ -31,7 +31,6 @@ PlasmoidItem {
     property string claudeModel: ""
     property string clineModel: ""
     property string antigravityModel: ""
-    property string codexModel: ""
     // Which service the popup shows (0 = Claude, 1 = Cline).  In All mode,
     // clicking the panel icon cycles tabs; in single mode it is fixed.
     property int activeTab: root.agentService === 1 ? 1
@@ -88,7 +87,6 @@ PlasmoidItem {
         root.claudeModel = ""
         root.clineModel = ""
         root.antigravityModel = ""
-        root.codexModel = ""
         root.activeModel = ""
         root.activeTab = root.agentService === 1 ? 1
                          : root.agentService === 3 ? 2
@@ -168,6 +166,13 @@ PlasmoidItem {
         return levelColor(limitLevel(percent, severity))
     }
 
+    function limitLabel(e, fallback) {
+        if (!e || !e.label) return i18n(fallback)
+        if (e.label === "session") return i18n(fallback)
+        if (e.label.indexOf("week") === 0) return i18n(fallback)
+        return e.label
+    }
+
     readonly property int highestPercent: {
         let values = allEntries().map(e => e.percent)
         return values.length > 0 ? Math.max(...values) : -1
@@ -209,8 +214,8 @@ PlasmoidItem {
         function svcLines(u, name) {
             if (!u.ok) return [i18n("%1: —", name)]
             let lines = []
-            if (u.session) lines.push(i18n("%1 session: %2%", name, u.session.percent))
-            if (u.week) lines.push(i18n("%1 week: %2%", name, u.week.percent))
+            if (u.session) lines.push(i18n("%1 %2: %3%", name, root.limitLabel(u.session, "session"), u.session.percent))
+            if (u.week) lines.push(i18n("%1 %2: %3%", name, root.limitLabel(u.week, "week"), u.week.percent))
             return lines
         }
         if (root.agentService === 2) {
@@ -236,10 +241,10 @@ PlasmoidItem {
             })
         } else {
             if (usage.session) {
-                lines.push(i18n("Session: %1% (resets %2)", usage.session.percent, usage.session.resets))
+                lines.push(i18n("%1: %2% (resets %3)", root.limitLabel(usage.session, "Session"), usage.session.percent, usage.session.resets))
             }
             if (usage.week) {
-                lines.push(i18n("Week: %1% (resets %2)", usage.week.percent, usage.week.resets))
+                lines.push(i18n("%1: %2% (resets %3)", root.limitLabel(usage.week, "Week"), usage.week.percent, usage.week.resets))
             }
             usage.extraLimits.forEach(entry => {
                 lines.push(i18n("%1: %2% (resets %3)", entry.label, entry.percent, entry.resets))

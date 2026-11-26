@@ -12,6 +12,11 @@ def error(message):
     sys.exit(0)
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, msg, headers, fp)
+
+
 def account_id(tokens):
     value = tokens.get("account_id") or tokens.get("accountId")
     if value:
@@ -48,8 +53,9 @@ def main():
         headers["ChatGPT-Account-Id"] = account
 
     request = urllib.request.Request("https://chatgpt.com/backend-api/wham/usage", headers=headers)
+    opener = urllib.request.build_opener(NoRedirect)
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        with opener.open(request, timeout=10) as response:
             body = response.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         if exc.code in (401, 403):

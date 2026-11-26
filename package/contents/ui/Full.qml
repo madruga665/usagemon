@@ -22,8 +22,8 @@ ColumnLayout {
         let mk = (label, e) => ({ label: label, percent: e.percent, resets: e.resets,
                                   resetsAt: e.resetsAt || 0, severity: e.severity || "" })
         let out = []
-        if (root.usage.session) out.push(mk(i18n("Session"), root.usage.session))
-        if (root.usage.week) out.push(mk(i18n("Week"), root.usage.week))
+        if (root.usage.session) out.push(mk(root.limitLabel(root.usage.session, "Session"), root.usage.session))
+        if (root.usage.week) out.push(mk(root.limitLabel(root.usage.week, "Week"), root.usage.week))
         root.usage.extraLimits.forEach(e => out.push(mk(e.label, e)))
         return out
     }
@@ -86,7 +86,7 @@ ColumnLayout {
                 readonly property string bothModel: root.activeTab === 0 ? root.claudeModel
                                                    : root.activeTab === 1 ? root.clineModel
                                                    : root.activeTab === 2 ? root.antigravityModel
-                                                   : root.codexModel
+                                                   : ""
                 readonly property string shownModel: root.agentService === 2 ? bothModel : root.activeModel
                 // Brand icon for the model family behind the current reading:
                 // Claude for Claude Code/Cline (Cline mostly proxies Claude

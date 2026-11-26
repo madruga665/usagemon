@@ -54,8 +54,7 @@ function parseUsage(jsonText) {
         error: null,
         session: null,
         week: null,
-        extraLimits: [],
-        raw: jsonText || ""
+        extraLimits: []
     }
 
     if (!jsonText || jsonText.trim().length === 0) {
